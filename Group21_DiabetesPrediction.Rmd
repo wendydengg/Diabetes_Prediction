@@ -28,8 +28,7 @@ urlcolor: blue
 knitr::opts_chunk$set(echo = FALSE, results = "hide", warning = FALSE, message = FALSE, fig.width=8, fig.height=4)
 options(scipen = 0, digits = 3) 
 if(!require('pacman')) {install.packages('pacman')}
-pacman::p_load(bestglm, glmnet, leaps, car, tidyverse, pROC, caret, haven, lfactors, readxl, collapse, mice, skimr, naniar, ggpubr, RColorBrewer, usmap, table1, treemap, d3treeR, dplyr, ggbiplot, purrr)
-
+pacman::p_load(bestglm, glmnet, leaps, car, tidyverse, pROC, caret, haven, lfactors, readxl, collapse, mice, skimr, naniar, ggpubr, RColorBrewer, usmap, table1, treemap, d3treeR, dplyr, ggbiplot, purrr, tree, rpart, randomForest, ranger, rattle, partykit, ggplot2,lda, data.table, ISLR)
 ```
 
 ```{r load and clean data, eval=FALSE}
@@ -665,6 +664,151 @@ data.frame(x = pca_all$x[,1],
   labs(color = "Diabetes status", shape = "Cluster",title = "Figure 10: True Diabetes Status VS Clusters") +
   xlab("PC1") +
   ylab("PC2") 
+```
+We chose 55 variables from the full data, and we want to find the most important factors that relate to `DIABETESYN` and build a best possible linear prediction equation to predict `DIABETESYN`. Since most variables are factors, we created dummy variables for each level so that we now have 116 variables. We first ran a linear model with all of the variables, and we can see that we cannot estimate all the coefficients as variables such as `ARTHLIMITNo arthritis` and `ARTHWORKNo arthritis` have `NA` as their coefficient. 
+
+```{r select variables for lasso, echo=FALSE,results='hide',message=FALSE}
+data_lasso <-  subset(diabetes, select = -c(ADULTS, state_abbr))
+ncol(data_lasso)
+names(data_lasso)
+dim(data_lasso) # 253684 observations, 55 predictors
+str(data_lasso)
+summary(data_lasso)
+data_lasso <- data_lasso %>%
+  mutate_if(is.factor, as.character)
+```
+
+```{r fit1 all variables, echo=FALSE,results='hide',message=FALSE}
+fit1 <- lm(DIABETESYN~., data_lasso)
+summary(fit1)
+```
+
+```{r, prepare variables, echo=FALSE,results='hide',message=FALSE}
+dim(data_lasso)
+Y <- as.matrix(data_lasso[, 1])
+X <- model.matrix(DIABETESYN~., data=data_lasso)[, -1]
+dim(X)
+dim(Y)
+colnames(X)
+```
+
+```{r fit.lambda, echo=FALSE,results='hide',message=FALSE}
+set.seed(1)
+fit.lambda <- cv.glmnet(X, as.numeric(Y), alpha=1, nfolds=10) 
+fit.lambda$lambda.min
+fit.lambda$lambda.1se
+
+coef.1se <- coef(fit.lambda, s="lambda.1se")
+coef.1se <- coef.1se[which(coef.1se !=0),]  
+var.1se <- rownames(as.matrix(coef.1se))[-1]
+var.1se
+names(data_lasso)
+data_lasso_sub <- data_lasso[,c("DIABETESYN", "SEX", "BADPHYSDAYS", "PERSDOC", "CHECKUP", "BPHIGH", "HIGHCHOL", "CHDMI", "STROKE", "SKINCANCER", "KIDNEY", "ARTHRITIS", "ARTHLIMIT", "ARTHWORK", "EDU", "HOME", "EMPLOY", "CHILD", "INCOME", "BMICAT", "DEAFNESS", "BLINDNESS", "WALKDIFF", "SMOKE", "BINGEALC", "HEAVYALC", "EXERCISE", "WRKOUTGUIDELINE", "ESTVO2MAX", "DAILYFTJUICE", "DAILYPOTATO", "FLUSHOT", "TETANUS", "PNEUVAC", "HIVTEST", "RACE", "DRNKPERMONTH")]
+dim(data_lasso_sub)
+```
+
+Based on **Figure 11**, we used `lambda.1se` to narrow down the numbder of predictors to 50. We then used backward selection to narrow down the numbder of predictors even further to 12, and narrowed down again to 6. In the first reduced lasso model, the 12 most significant predictors for `DIABETESYN` are: "SEX", "BADPHYSDAYS", "CHECKUP", "BPHIGH", "HIGHCHOL", "CHDMI", "KIDNEY", "BMICAT", "WALKDIFF", "ESTVO2MAX", "PNEUVAC", "RACE". In the second reduced lasso model, the 6 most significant predictors for `DIABETESYN` are: "BPHIGH", "HIGHCHOL", "KIDNEY", "BMICAT", "WALKDIFF", "PNEUVAC". In total, we have four regression models using `DIABETESYN` as the response variable. However, it is worth to note that the final two lasso models do not meet the linear model assumptions with their residual plots, which is likely due to most of the variables being categorical variables.
+
+```{r plots, echo=FALSE}
+plot(fit.lambda)
+plot(fit.lambda$lambda, 
+     main = "Figure 11: There are 80 lambda used", 
+     xlab = "Lambda Index", 
+     ylab = "Lambda Value",
+     type = "l") 
+```
+
+```{r fit.final lasso model, echo=FALSE,results='hide',message=FALSE}
+fit.final <- lm(DIABETESYN ~., data=data_lasso_sub)
+summary(fit.final)
+fit.final.1 <- regsubsets(DIABETESYN ~., nvmax = 30, method = "backward", data_lasso_sub)
+plot(summary(fit.final.1)$cp)  
+
+fit.final.1.s <- summary(fit.final.1)
+opt.size1 <- 12
+opt.size2 <- 6
+final.var1 <- colnames(fit.final.1.s$which)[fit.final.1.s$which[opt.size1, ]][-1]
+final.var2 <- colnames(fit.final.1.s$which)[fit.final.1.s$which[opt.size2, ]][-1]
+
+data_lasso_sub1 <- data_lasso[,c("DIABETESYN", "SEX", "BADPHYSDAYS", "CHECKUP", "BPHIGH", "HIGHCHOL", "CHDMI", "KIDNEY", "BMICAT", "WALKDIFF", "ESTVO2MAX", "PNEUVAC", "RACE")]
+
+data_lasso_sub2 <- data_lasso[,c("DIABETESYN", "BPHIGH", "HIGHCHOL", "KIDNEY", "BMICAT", "WALKDIFF", "PNEUVAC")]
+
+fit.final.reduced1 <- lm(DIABETESYN ~., data = data_lasso_sub1)
+summary(fit.final.reduced1)
+
+fit.final.reduced2 <- lm(DIABETESYN ~., data = data_lasso_sub2)
+summary(fit.final.reduced2)
+```
+
+```{r assumptions, echo=FALSE,message=FALSE}
+par(mfrow=c(1,2))
+plot(fit.final.reduced1, 1)
+plot(fit.final.reduced1, 2)
+
+par(mfrow=c(1,2))
+plot(fit.final.reduced2, 1)
+plot(fit.final.reduced2, 2)
+```
+## Random Forest
+
+We want to build a classification tree using the 6 predictors in our second lasso reduced model. First, we converted all of the characters to factors. We then built a single classification tree and measured its performance through the ROC curve. It has an AUC of 0.761, indicating a fairly good performance. 
+
+```{r select variables for random forest, echo=FALSE,results='hide',message=FALSE}
+data_rf <- subset(diabetes, select = c("DIABETESYN", "BPHIGH", "HIGHCHOL", "KIDNEY", "BMICAT", "WALKDIFF", "PNEUVAC"))
+str(data_rf)
+data_rf <- data_rf %>%
+  mutate_if(is.character, as.factor)
+summary(data_rf)
+```
+
+```{r fit1 all predictors, echo=FALSE,results='hide',message=FALSE}
+fit.tree <- tree(DIABETESYN~., data_rf, control=tree.control(nrow(data_rf), mindev = 0.005))
+plot(fit.tree) 
+text(fit.tree, pretty=TRUE)  
+
+predict(fit.tree, data_rf)[1:20, ] 
+prob.1 <- predict(fit.tree, data_rf)[, 2] 
+roc(data_rf$DIABETESYN, prob.1, plot=T) 
+```
+
+```{r plots, echo=FALSE}
+plot(fit.tree) 
+text(fit.tree, pretty=TRUE)  
+
+roc(data_rf$DIABETESYN, prob.1, plot=T, main="ROC curve for single classification tree") 
+```
+
+Next, we built our random forest using `mtry=sqrt(6)=approximately 2` and `ntree=500`, and the graph showing the mis-classification rates of OOB (black), misclassification errors for "0" (red) and "1" (green) of OOB also indicate a good performance. To get a prediction for the training dataset using a random forest, we split our data in a 80/20 split for training and testing datasets. As seen from the ROC curve for the random forest, the AUC is 0.609, which is not as good as the single classification, but it also makes sense because the single tree can easily overfit the data. Our testing error is 0.141, also indicating that our random forest did not perform too badly.
+
+```{r randomForest plot, echo=FALSE}
+set.seed(1)
+fit.rf <- randomForest(DIABETESYN~., data_rf, mtry=2, ntree=500)  
+
+plot(fit.rf) 
+legend("topright", colnames(fit.rf$err.rate), col=1:3, cex=0.8, fill=1:3)
+```
+
+```{r training/testing split, echo=FALSE, results='hide', message=FALSE}
+n <- nrow(data_rf)
+n1 <- (4/5)*n
+train.index <- sample(n, n1, replace=FALSE)
+length(train.index)
+data.train <- data_rf[train.index, ]
+data.test <- data_rf[-train.index, ]
+```
+
+```{r prediction, echo=FALSE}
+fit.rf.train <- randomForest(DIABETESYN~., data.train)
+plot(fit.rf.train)
+legend("topright", colnames(fit.rf.train$err.rate), col = 1:3, cex=0.8, fill=1:3)
+```
+
+```{r testing error and AUC, echo=FALSE}
+predict.rf.y <- predict(fit.rf.train, newdata=data.test)
+predict.rf <- predict(fit.rf.train, newdata=data.test, type="prob") 
+rf.test.err <- mean(data.test$DIABETESYN != predict.rf.y) 
+roc(data.test$DIABETESYN, predict.rf[,2], plot=TRUE, main="ROC curve for random forest")
 ```
 
 

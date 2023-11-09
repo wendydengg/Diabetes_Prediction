@@ -1,32 +1,12 @@
----
-title: "Diabetes Prediction Using Survey Data"
-date: ''
-output:
-  html_document:
-    code_folding: show
-    highlight: haddock
-    number_sections: yes
-    theme: lumen
-    toc: yes
-    toc_depth: 4
-    toc_float: yes
-  pdf_document:
-    number_sections: yes
-    toc: yes
-    toc_depth: '4'
-  word_document:
-    toc: yes
-    toc_depth: '4'
-urlcolor: blue
----
-
+# Diabetes Prediction Using Survey Data
+## Setup
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, results = "hide", warning = FALSE, message = FALSE, fig.width=8, fig.height=4)
 options(scipen = 0, digits = 3) 
 if(!require('pacman')) {install.packages('pacman')}
 pacman::p_load(bestglm, glmnet, leaps, car, tidyverse, pROC, caret, haven, lfactors, readxl, collapse, mice, skimr, naniar, ggpubr, RColorBrewer, usmap, table1, treemap, d3treeR, dplyr, ggbiplot, purrr, tree, rpart, randomForest, ranger, rattle, partykit, ggplot2,lda, data.table, ISLR)
 ```
-
+## Load and Clean Data
 ```{r load and clean data, eval=FALSE}
 data <- read_xpt("data/LLCP2019.XPT")
 

@@ -1,9 +1,5 @@
 ---
 title: "Diabetes Prediction Using Survey Data"
-author:
-- Wendy Deng
-- Ruolan Li
-- Kira Nightingale
 date: ''
 output:
   html_document:
